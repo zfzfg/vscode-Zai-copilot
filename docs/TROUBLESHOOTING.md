@@ -48,3 +48,13 @@ If your network is slow or if deep reasoning models take longer to produce their
 - **Symptom**: Error indicating reasoning context could not be matched for a multi-step tool call.
 - **Cause**: The in-memory replay store preserves thinking tokens across tool turns in the same conversation session. If the VS Code window was reloaded, if the conversation was forked/compacted, or if 30 minutes elapsed, the cache entry may be pruned.
 - **Resolution**: Start a new conversation turn or prompt the model anew.
+
+## 5. Request Cancellation & Aborted Turns
+- **Behavior**: When you click "Stop" or cancel a turn in VS Code chat, the provider terminates the connection immediately, throws `vscode.CancellationError`, and rolls back any pending tool replay cache entries.
+- **Diagnostics**: The output log will indicate `Chat completion was cancelled by user`. No partial or corrupted tool continuation turns are stored.
+
+## 6. Concurrency Limits & Request Queuing
+- **Limit**: Z.ai enforces a concurrency limit of 3 simultaneous streaming chat completions.
+- **Queue Behavior**: If 3 requests are actively streaming, a 4th request enters a FIFO queue (capacity: 10 waiting requests) instead of failing immediately. As soon as an active stream completes, the next queued request begins.
+- **Cancellation**: Waiting requests can be cancelled at any time by stopping the chat turn in VS Code, removing the item from the queue without sending upstream traffic.
+- **Overflow**: If the queue exceeds 10 waiting requests, a `CONCURRENCY_LIMIT_EXCEEDED` error is returned advising to wait for active requests to finish.

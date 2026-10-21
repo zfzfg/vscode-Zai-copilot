@@ -5,7 +5,11 @@ export class ZaiError extends Error {
     public readonly httpStatus?: number,
     public readonly userAdvice?: string
   ) {
-    super(message);
+    const formattedMessage =
+      userAdvice && !message.includes(userAdvice)
+        ? `${message} — ${userAdvice}`
+        : message;
+    super(formattedMessage);
     this.name = 'ZaiError';
     Object.setPrototypeOf(this, new.target.prototype);
   }

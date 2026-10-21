@@ -8,6 +8,17 @@ export enum LanguageModelChatToolMode {
   Required = 2,
 }
 
+export class CancellationError extends Error {
+  constructor() {
+    super('Canceled');
+    this.name = 'CancellationError';
+  }
+}
+
+export interface SecretStorageChangeEvent {
+  readonly key: string;
+}
+
 export class LanguageModelTextPart {
   constructor(public value: string) {}
 }
@@ -76,6 +87,7 @@ export enum ViewColumn {
 }
 
 const mockConfigStore = new Map<string, any>();
+const configChangeEmitter = new EventEmitter<{ affectsConfiguration: (s: string) => boolean }>();
 
 export const workspace = {
   getConfiguration: (section?: string) => ({
@@ -89,10 +101,13 @@ export const workspace = {
     update: async (key: string, value: any, _target?: ConfigurationTarget): Promise<void> => {
       const fullKey = section ? `${section}.${key}` : key;
       mockConfigStore.set(fullKey, value);
+      configChangeEmitter.fire({
+        affectsConfiguration: (s: string) => fullKey.startsWith(s) || s.startsWith(fullKey),
+      });
     },
   }),
-  onDidChangeConfiguration: (_listener: (e: { affectsConfiguration: (s: string) => boolean }) => void): Disposable => {
-    return { dispose: () => {} };
+  onDidChangeConfiguration: (listener: (e: { affectsConfiguration: (s: string) => boolean }) => void): Disposable => {
+    return configChangeEmitter.event(listener);
   },
   openTextDocument: async (opts: any) => opts,
 };

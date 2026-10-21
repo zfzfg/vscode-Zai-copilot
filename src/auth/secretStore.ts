@@ -7,6 +7,8 @@ export class SecretStoreManager implements vscode.Disposable {
 
   private _credentialGeneration = 1;
   private _isDialogActive = false;
+  private _isInternalMutation = false;
+  private readonly _disposables: vscode.Disposable[] = [];
 
   private readonly _onDidRotateSecret = new vscode.EventEmitter<{
     profile: EndpointProfile;
@@ -20,7 +22,35 @@ export class SecretStoreManager implements vscode.Disposable {
   }>();
   public readonly onDidDeleteSecret = this._onDidDeleteSecret.event;
 
-  constructor(private readonly secrets: vscode.SecretStorage) {}
+  constructor(private readonly secrets: vscode.SecretStorage) {
+    if (this.secrets.onDidChange) {
+      this._disposables.push(
+        this.secrets.onDidChange(async (e) => {
+          if (this._isInternalMutation) {
+            return;
+          }
+          if (e.key.startsWith(SecretStoreManager.SECRET_KEY_PREFIX)) {
+            const profile = e.key.substring(
+              SecretStoreManager.SECRET_KEY_PREFIX.length
+            ) as EndpointProfile;
+            const newKey = await this.secrets.get(e.key);
+            this._credentialGeneration++;
+            if (newKey && newKey.trim().length > 0) {
+              this._onDidRotateSecret.fire({
+                profile,
+                generation: this._credentialGeneration,
+              });
+            } else {
+              this._onDidDeleteSecret.fire({
+                profile,
+                generation: this._credentialGeneration,
+              });
+            }
+          }
+        })
+      );
+    }
+  }
 
   public getCredentialGeneration(): number {
     return this._credentialGeneration;
@@ -48,7 +78,12 @@ export class SecretStoreManager implements vscode.Disposable {
     if (!trimmed) {
       throw new Error('API key cannot be empty or only whitespace.');
     }
-    await this.secrets.store(this.getStorageKey(profile), trimmed);
+    this._isInternalMutation = true;
+    try {
+      await this.secrets.store(this.getStorageKey(profile), trimmed);
+    } finally {
+      this._isInternalMutation = false;
+    }
     this._credentialGeneration++;
     this._onDidRotateSecret.fire({
       profile,
@@ -57,7 +92,12 @@ export class SecretStoreManager implements vscode.Disposable {
   }
 
   public async deleteApiKey(profile: EndpointProfile): Promise<void> {
-    await this.secrets.delete(this.getStorageKey(profile));
+    this._isInternalMutation = true;
+    try {
+      await this.secrets.delete(this.getStorageKey(profile));
+    } finally {
+      this._isInternalMutation = false;
+    }
     this._credentialGeneration++;
     this._onDidDeleteSecret.fire({
       profile,
@@ -117,5 +157,9 @@ export class SecretStoreManager implements vscode.Disposable {
   public dispose(): void {
     this._onDidRotateSecret.dispose();
     this._onDidDeleteSecret.dispose();
+    for (const d of this._disposables) {
+      d.dispose();
+    }
+    this._disposables.length = 0;
   }
 }

@@ -37,6 +37,8 @@ export class ZaiChatProvider
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   public readonly onDidChangeLanguageModelChatInformation = this._onDidChange.event;
   private readonly _disposables: vscode.Disposable[] = [];
+  private _didPromptUnconfigured = false;
+  private _didPromptMissingKey = false;
 
   constructor(
     private readonly configManager: ConfigurationManager,
@@ -49,12 +51,16 @@ export class ZaiChatProvider
   ) {
     this._disposables.push(
       this.configManager.onDidChange(() => {
+        this._didPromptUnconfigured = false;
+        this._didPromptMissingKey = false;
         this._onDidChange.fire();
       }),
       this.secretStore.onDidRotateSecret(() => {
+        this._didPromptMissingKey = false;
         this._onDidChange.fire();
       }),
       this.secretStore.onDidDeleteSecret(() => {
+        this._didPromptMissingKey = false;
         this._onDidChange.fire();
       })
     );
@@ -67,8 +73,9 @@ export class ZaiChatProvider
     const config = this.configManager.getSnapshot();
 
     if (config.endpointProfile === 'unconfigured') {
-      if (!options.silent) {
-        // Non-silent discovery: prompt user to configure provider
+      if (!options.silent && !this._didPromptUnconfigured) {
+        this._didPromptUnconfigured = true;
+        // Non-silent discovery: prompt user to configure provider (coalesced once per configuration state)
         vscode.window
           .showInformationMessage(
             'Z.ai Copilot Provider is not yet configured. Would you like to select a profile and configure an API key?',
@@ -85,7 +92,8 @@ export class ZaiChatProvider
 
     const hasKey = await this.secretStore.hasApiKey(config.endpointProfile);
     if (!hasKey) {
-      if (!options.silent) {
+      if (!options.silent && !this._didPromptMissingKey) {
+        this._didPromptMissingKey = true;
         vscode.window
           .showInformationMessage(
             `No API key configured for Z.ai profile '${config.endpointProfile}'. Please set an API key.`,
@@ -120,7 +128,7 @@ export class ZaiChatProvider
     token: vscode.CancellationToken
   ): Promise<void> {
     if (token.isCancellationRequested) {
-      return;
+      throw new vscode.CancellationError();
     }
 
     const config = this.configManager.getSnapshot();
@@ -245,9 +253,11 @@ export class ZaiChatProvider
     const streamDecoder = new SseStreamDecoder();
     const toolAccumulator = new ToolCallAccumulator();
 
-    let accumulatedVisibleText = '';
-    let accumulatedReasoningText = '';
-    let responseFinishReason: string | null = null;
+    const streamState = {
+      accumulatedVisibleText: '',
+      accumulatedReasoningText: '',
+      responseFinishReason: null as string | null,
+    };
     let streamReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let committedReplayRecord = false;
 
@@ -264,7 +274,10 @@ export class ZaiChatProvider
       streamReader = responseStream.getReader();
 
       while (true) {
-        if (token.isCancellationRequested || abortController.signal.aborted) {
+        if (token.isCancellationRequested) {
+          throw new vscode.CancellationError();
+        }
+        if (abortController.signal.aborted) {
           break;
         }
 
@@ -273,56 +286,31 @@ export class ZaiChatProvider
         if (done) {
           // Process any trailing bytes in decoder
           const finalEvents = streamDecoder.end();
-          for (const ev of finalEvents) {
-            this.handleStreamEvent(
-              ev,
-              progress,
-              toolAccumulator,
-              (chunk) => {
-                timeoutController.notifyActivity(true);
-                if (chunk.choices?.[0]?.delta?.content) {
-                  accumulatedVisibleText += chunk.choices[0].delta.content;
-                }
-                if (chunk.choices?.[0]?.delta?.reasoning_content) {
-                  accumulatedReasoningText += chunk.choices[0].delta.reasoning_content;
-                }
-                if (chunk.choices?.[0]?.delta?.reasoning) {
-                  accumulatedReasoningText += chunk.choices[0].delta.reasoning;
-                }
-                if (chunk.choices?.[0]?.finish_reason) {
-                  responseFinishReason = chunk.choices[0].finish_reason;
-                }
-              },
-              () => timeoutController.notifyActivity(false)
-            );
-          }
+          this.processStreamEvents(
+            finalEvents,
+            progress,
+            toolAccumulator,
+            timeoutController,
+            streamState
+          );
           break;
         }
 
         if (value) {
           const events = streamDecoder.feedChunk(value);
-          for (const ev of events) {
-            this.handleStreamEvent(
-              ev,
-              progress,
-              toolAccumulator,
-              (chunk) => {
-                timeoutController.notifyActivity(true);
-                if (chunk.choices?.[0]?.delta?.content) {
-                  accumulatedVisibleText += chunk.choices[0].delta.content;
-                }
-                if (chunk.choices?.[0]?.delta?.reasoning_content) {
-                  accumulatedReasoningText += chunk.choices[0].delta.reasoning_content;
-                }
-                if (chunk.choices?.[0]?.delta?.reasoning) {
-                  accumulatedReasoningText += chunk.choices[0].delta.reasoning;
-                }
-                if (chunk.choices?.[0]?.finish_reason) {
-                  responseFinishReason = chunk.choices[0].finish_reason;
-                }
-              },
-              () => timeoutController.notifyActivity(false)
-            );
+          this.processStreamEvents(
+            events,
+            progress,
+            toolAccumulator,
+            timeoutController,
+            streamState
+          );
+          if (streamDecoder.isDone) {
+            // A2: Early-break after [DONE] event received without waiting for TCP close
+            this.logger.debug('Stream decoder marked [DONE], breaking read loop early', {
+              requestId,
+            });
+            break;
           }
         }
       }
@@ -332,14 +320,16 @@ export class ZaiChatProvider
         throw timeoutError;
       }
       if (token.isCancellationRequested) {
-        return;
+        throw new vscode.CancellationError();
       }
 
       // Validate stream completion
       if (!streamDecoder.isDone) {
         throw new ZaiError(
           'Stream terminated prematurely: connection closed before [DONE] event was received.',
-          'INCOMPLETE_STREAM'
+          'INCOMPLETE_STREAM',
+          undefined,
+          'Network or provider streaming was interrupted before stream completion.'
         );
       }
 
@@ -348,14 +338,14 @@ export class ZaiChatProvider
         const validatedCalls = toolAccumulator.validateAndComplete(
           mappedTools.nameMapper,
           allowedHostToolNames,
-          responseFinishReason
+          streamState.responseFinishReason
         );
 
         // Pre-commit replay record atomically before publishing tool calls
-        if (accumulatedReasoningText.length > 0) {
+        if (streamState.accumulatedReasoningText.length > 0) {
           const recordByteSize =
-            Buffer.byteLength(accumulatedReasoningText, 'utf8') +
-            Buffer.byteLength(accumulatedVisibleText, 'utf8') +
+            Buffer.byteLength(streamState.accumulatedReasoningText, 'utf8') +
+            Buffer.byteLength(streamState.accumulatedVisibleText, 'utf8') +
             validatedCalls.reduce((acc, c) => acc + Buffer.byteLength(c.rawArguments, 'utf8'), 0);
 
           this.replayStore.put({
@@ -365,11 +355,11 @@ export class ZaiChatProvider
             credentialGeneration: this.secretStore.getCredentialGeneration(),
             configGeneration: config.configGeneration,
             inputHistoryFingerprint: currentInputFingerprint,
-            assistantText: accumulatedVisibleText || null,
+            assistantText: streamState.accumulatedVisibleText || null,
             callIds: Object.freeze(validatedCalls.map((c) => c.callId)),
             toolNames: Object.freeze(validatedCalls.map((c) => c.originalName)),
             rawArguments: Object.freeze(validatedCalls.map((c) => c.rawArguments)),
-            reasoningContent: accumulatedReasoningText,
+            reasoningContent: streamState.accumulatedReasoningText,
             timestamp: Date.now(),
             byteSize: recordByteSize,
             status: 'completed',
@@ -383,7 +373,7 @@ export class ZaiChatProvider
             if (committedReplayRecord) {
               this.replayStore.remove(requestId);
             }
-            break;
+            throw new vscode.CancellationError();
           }
           progress.report(
             createToolCallResponsePart(call.callId, call.originalName, call.input)
@@ -394,13 +384,16 @@ export class ZaiChatProvider
           if (committedReplayRecord) {
             this.replayStore.remove(requestId);
           }
-          return;
+          throw new vscode.CancellationError();
         }
-      } else if (accumulatedReasoningText.length > 0 && config.preservedThinking === 'experimental-strict') {
+      } else if (
+        streamState.accumulatedReasoningText.length > 0 &&
+        config.preservedThinking === 'experimental-strict'
+      ) {
         // Record replay record for plain text turn if reasoning was captured
         const recordByteSize =
-          Buffer.byteLength(accumulatedReasoningText, 'utf8') +
-          Buffer.byteLength(accumulatedVisibleText, 'utf8');
+          Buffer.byteLength(streamState.accumulatedReasoningText, 'utf8') +
+          Buffer.byteLength(streamState.accumulatedVisibleText, 'utf8');
 
         this.replayStore.put({
           requestId,
@@ -409,11 +402,11 @@ export class ZaiChatProvider
           credentialGeneration: this.secretStore.getCredentialGeneration(),
           configGeneration: config.configGeneration,
           inputHistoryFingerprint: currentInputFingerprint,
-          assistantText: accumulatedVisibleText || null,
+          assistantText: streamState.accumulatedVisibleText || null,
           callIds: Object.freeze([]),
           toolNames: Object.freeze([]),
           rawArguments: Object.freeze([]),
-          reasoningContent: accumulatedReasoningText,
+          reasoningContent: streamState.accumulatedReasoningText,
           timestamp: Date.now(),
           byteSize: recordByteSize,
           status: 'completed',
@@ -425,15 +418,22 @@ export class ZaiChatProvider
         requestId,
         events: streamDecoder.eventCount,
         bytes: streamDecoder.totalBytes,
-        finishReason: responseFinishReason ?? 'stop',
+        finishReason: streamState.responseFinishReason ?? 'stop',
       });
     } catch (err: any) {
       if (committedReplayRecord) {
         this.replayStore.remove(requestId);
       }
-      if (token.isCancellationRequested || abortController.signal.aborted) {
+      if (err instanceof vscode.CancellationError || token.isCancellationRequested) {
+        this.logger.info('Chat completion was cancelled by user', { requestId });
+        throw new vscode.CancellationError();
+      }
+      if (timeoutError) {
+        this.logger.warn('Chat completion timed out', { requestId, error: timeoutError.message });
+        throw timeoutError;
+      }
+      if (abortController.signal.aborted && !token.isCancellationRequested) {
         this.logger.info('Chat completion was aborted', { requestId });
-        return;
       }
       this.logger.error('Chat completion failed', {
         requestId,
@@ -452,6 +452,43 @@ export class ZaiChatProvider
           // Ignore cleanup error
         }
       }
+    }
+  }
+
+  private processStreamEvents(
+    events: readonly import('../protocol/streamDecoder.js').SseEvent[],
+    progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+    toolAccumulator: ToolCallAccumulator,
+    timeoutController: TimeoutController,
+    state: {
+      accumulatedVisibleText: string;
+      accumulatedReasoningText: string;
+      responseFinishReason: string | null;
+    }
+  ): void {
+    for (const ev of events) {
+      this.handleStreamEvent(
+        ev,
+        progress,
+        toolAccumulator,
+        (chunk) => {
+          timeoutController.notifyActivity(true);
+          const choice = chunk.choices?.[0];
+          if (choice?.delta?.content) {
+            state.accumulatedVisibleText += choice.delta.content;
+          }
+          if (choice?.delta?.reasoning_content) {
+            state.accumulatedReasoningText += choice.delta.reasoning_content;
+          }
+          if (choice?.delta?.reasoning) {
+            state.accumulatedReasoningText += choice.delta.reasoning;
+          }
+          if (choice?.finish_reason) {
+            state.responseFinishReason = choice.finish_reason;
+          }
+        },
+        () => timeoutController.notifyActivity(false)
+      );
     }
   }
 

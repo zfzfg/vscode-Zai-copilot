@@ -96,13 +96,24 @@ export class Logger implements vscode.Disposable {
       return text;
     }
 
+    const redactTrailingPunct = (match: string): string => {
+      const trailing = match.match(/[.,;:!?]+$/)?.[0] ?? '';
+      return `[REDACTED_PATH]${trailing}`;
+    };
+
     return text
       // Redact Bearer tokens
       .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]')
-      // Redact key= or apiKey= values
-      .replace(/([?&]?(?:api[_-]?key|token|secret)\s*[:=]\s*)[A-Za-z0-9._~+/-]+/gi, '$1[REDACTED]')
+      // Redact key= or apiKey= or token= or secret= values
+      .replace(/([?&]?(?:api[_-]?key|key|token|secret)\s*[:=]\s*)[A-Za-z0-9._~+/-]+/gi, '$1[REDACTED]')
       // Redact potential Z.ai key formats
-      .replace(/[A-Za-z0-9]{32,}\.[A-Za-z0-9]{16,}/g, '[REDACTED_API_KEY]');
+      .replace(/[A-Za-z0-9]{32,}\.[A-Za-z0-9]{16,}/g, '[REDACTED_API_KEY]')
+      // Redact Windows user profile paths (C:\Users\<user>\... or C:/Users/<user>/...)
+      .replace(/\b[A-Za-z]:[\\/][Uu]sers[\\/][^\s"'`<>:;,?*|]+(?:[\\/][^\s"'`<>:;,?*|]+)*/g, redactTrailingPunct)
+      // Redact Linux user home paths (/home/<user>/...)
+      .replace(/(?:^|(?<=[\s"'`(\[<]))\/home\/[^\s"'`<>:;,?*|]+(?:\/[^\s"'`<>:;,?*|]+)*/g, redactTrailingPunct)
+      // Redact macOS user home paths (/Users/<user>/...)
+      .replace(/(?:^|(?<=[\s"'`(\[<]))\/Users\/[^\s"'`<>:;,?*|]+(?:\/[^\s"'`<>:;,?*|]+)*/g, redactTrailingPunct);
   }
 
   public dispose(): void {

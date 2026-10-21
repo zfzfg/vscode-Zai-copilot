@@ -251,13 +251,22 @@ describe('HTTP Client & Provider Mock Integration', () => {
     ).rejects.toThrow(/Rate limit exceeded/);
   });
 
-  it('enforces maximum concurrent requests limit (3 max)', async () => {
+  it('enforces maximum concurrent requests limit (3 max) and queue overflow limit', async () => {
     responseMode = 'standard_stream';
     const client = new HttpClient();
     const abortCtrl = new AbortController();
 
     // Fill up to max concurrency
     (client as any)._activeRequests = MAX_CONCURRENT_REQUESTS;
+    // Fill queue to capacity
+    for (let i = 0; i < 10; i++) {
+      (client as any)._queue.push({
+        resolve: () => {},
+        reject: () => {},
+        abortSignal: new AbortController().signal,
+        cleanup: () => {},
+      });
+    }
 
     await expect(
       client.postChatStream({
@@ -270,6 +279,7 @@ describe('HTTP Client & Provider Mock Integration', () => {
     ).rejects.toThrow(/Concurrent request limit exceeded/);
 
     (client as any)._activeRequests = 0;
+    (client as any)._queue.length = 0;
   });
 
   it('runs full end-to-end chat response through ZaiChatProvider and reports progress', async () => {
@@ -776,28 +786,30 @@ describe('HTTP Client & Provider Mock Integration', () => {
       },
     };
 
-    await provider.provideLanguageModelChatResponse(
-      modelInfo,
-      [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart('Run code')],
-          name: undefined,
-        },
-      ],
-      {
-        toolMode: vscode.LanguageModelChatToolMode.Auto,
-        tools: [
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        modelInfo,
+        [
           {
-            name: 'fetch_code',
-            description: 'Fetches code',
-            inputSchema: { type: 'object', properties: { file: { type: 'string' } } },
+            role: vscode.LanguageModelChatMessageRole.User,
+            content: [new vscode.LanguageModelTextPart('Run code')],
+            name: undefined,
           },
         ],
-      },
-      progress,
-      dummyToken
-    );
+        {
+          toolMode: vscode.LanguageModelChatToolMode.Auto,
+          tools: [
+            {
+              name: 'fetch_code',
+              description: 'Fetches code',
+              inputSchema: { type: 'object', properties: { file: { type: 'string' } } },
+            },
+          ],
+        },
+        progress,
+        dummyToken
+      )
+    ).rejects.toThrow(vscode.CancellationError);
 
     // Replay record must have been rolled back / removed on cancellation!
     expect(replayStore.count).toBe(0);
