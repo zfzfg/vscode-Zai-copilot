@@ -189,6 +189,42 @@ describe('ReplayStore & HistoryMatcher', () => {
       expect(matched).toBeUndefined();
     });
 
+    it('matches by unique expectedCallIds as a fallback when host compacts or reformats input fingerprint', () => {
+      const store = new ReplayStore();
+      const matcher = new HistoryMatcher('test-namespace');
+
+      store.put({
+        requestId: 'req-step-6',
+        modelId: 'glm-5.3',
+        endpointProfile: 'standard',
+        credentialGeneration: 1,
+        configGeneration: 1,
+        inputHistoryFingerprint: 'original-step-fingerprint',
+        assistantText: null,
+        callIds: ['call_a151536202cf48bd8225035e', 'call_a9478865658947758be44932'],
+        toolNames: ['read_file', 'edit_file'],
+        rawArguments: ['{}', '{}'],
+        reasoningContent: 'Deep reasoning for tool calls',
+        timestamp: Date.now(),
+        byteSize: 200,
+        status: 'completed',
+      });
+
+      // Host sent compacted history resulting in different fingerprint
+      const matched = matcher.matchReplayRecord(store, {
+        modelId: 'glm-5.3',
+        endpointProfile: 'standard',
+        credentialGeneration: 1,
+        configGeneration: 1,
+        inputHistoryFingerprint: 'compacted-history-fingerprint', // Different!
+        expectedCallIds: ['call_a151536202cf48bd8225035e', 'call_a9478865658947758be44932'],
+      });
+
+      expect(matched).toBeDefined();
+      expect(matched?.reasoningContent).toBe('Deep reasoning for tool calls');
+      expect(matched?.requestId).toBe('req-step-6');
+    });
+
     it('aborts safely with ReplayMatchingError when multiple ambiguous candidates match', () => {
       const store = new ReplayStore();
       const matcher = new HistoryMatcher('test-namespace');

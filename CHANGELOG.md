@@ -12,6 +12,8 @@ All notable changes to the "zai-copilot-provider" extension will be documented i
 - **Enhanced Privacy Redaction**: Added automatic masking of absolute filesystem paths in user home directories (`C:\Users\<user>\...`, `/home/<user>/...`, `/Users/<user>/...`) as `[REDACTED_PATH]`, and sanitized upstream HTTP error bodies to prevent prompt and credential echoing.
 - **Discovery Notification Coalescing**: Eliminated stacked popup notifications when VS Code queries unconfigured providers or profiles with missing keys.
 - **User Advice in Errors**: Appended actionable `userAdvice` to `ZaiError` messages to display clear remediation steps directly in the chat UI.
+- **Resilient Reasoning Replay**: Added fallback matching by unique tool call IDs when chat hosts compact or reformat historical messages across multi-step turns, preventing premature cache misses during long agentic runs.
+- **Brand Identity & Artwork**: Added official SVG logo (`media/logo.svg`) and high-resolution extension icon (`media/icon.png`).
 - **Code Health**: Deduplicated SSE delta and reasoning accumulation into a reusable `processStreamEvents` pipeline.
 
 ## [1.0.0] - 2026-10-21

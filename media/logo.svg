@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+
+    <!-- Outer Border Glow -->
+    <linearGradient id="border-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Top Horizontal Bar Gradient -->
+    <linearGradient id="top-bar-grad" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+
+    <!-- Diagonal Beam Gradient -->
+    <linearGradient id="diagonal-grad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="40%" stop-color="#818cf8"/>
+      <stop offset="70%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+
+    <!-- Bottom Horizontal Bar Gradient -->
+    <linearGradient id="bottom-bar-grad" x1="0%" y1="50%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="50%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#f43f5e"/>
+    </linearGradient>
+
+    <!-- Core Glow Filter -->
+    <filter id="glow-bright" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="ambient-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="24" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg-grad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#border-glow)" stroke-width="3.5"/>
+
+  <!-- Subtle Background Grid/Constellation Accents -->
+  <g opacity="0.25">
+    <!-- Grid Dots -->
+    <circle cx="96" cy="96" r="2.5" fill="#38bdf8"/>
+    <circle cx="416" cy="96" r="2.5" fill="#c084fc"/>
+    <circle cx="96" cy="416" r="2.5" fill="#38bdf8"/>
+    <circle cx="416" cy="416" r="2.5" fill="#c084fc"/>
+
+    <!-- Subtle Connection Lines -->
+    <line x1="96" y1="96" x2="140" y2="140" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="416" y1="96" x2="372" y2="140" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="96" y1="416" x2="140" y2="372" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="416" y1="416" x2="372" y2="372" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="4 4"/>
+  </g>
+
+  <!-- Inner Ambient Aura Behind Z -->
+  <circle cx="256" cy="256" r="140" fill="#6366f1" opacity="0.12" filter="url(#ambient-glow)"/>
+  <circle cx="220" cy="210" r="80" fill="#06b6d4" opacity="0.15" filter="url(#ambient-glow)"/>
+  <circle cx="290" cy="300" r="80" fill="#a855f7" opacity="0.15" filter="url(#ambient-glow)"/>
+
+  <!-- Futuristic Z Shape Geometry -->
+  <g filter="url(#glow-bright)">
+    <!-- Top Horizontal Segment -->
+    <path d="M 120 148
+             C 120 134.7 130.7 124 144 124
+             L 368 124
+             C 381.3 124 392 134.7 392 148
+             C 392 154.5 389.4 160.7 384.8 165.2
+             L 204 346
+             L 136 346
+             L 278 204
+             L 144 204
+             C 130.7 204 120 193.3 120 180
+             Z"
+          fill="url(#top-bar-grad)"/>
+
+    <!-- Bottom Horizontal Segment -->
+    <path d="M 392 364
+             C 392 377.3 381.3 388 368 388
+             L 144 388
+             C 130.7 388 120 377.3 120 364
+             C 120 357.5 122.6 351.3 127.2 346.8
+             L 308 166
+             L 376 166
+             L 234 308
+             L 368 308
+             C 381.3 308 392 318.7 392 332
+             Z"
+          fill="url(#bottom-bar-grad)"/>
+
+    <!-- Main Diagonal Cyber Beam -->
+    <polygon points="384,142 396,154 172,378 128,378 116,366 340,142"
+             fill="url(#diagonal-grad)"
+             opacity="0.95"/>
+  </g>
+
+  <!-- Glowing Neural Nodes on Z Verteces -->
+  <g>
+    <!-- Top Left Node -->
+    <circle cx="144" cy="148" r="8" fill="#38bdf8" filter="url(#glow-bright)"/>
+    <circle cx="144" cy="148" r="3.5" fill="#ffffff"/>
+
+    <!-- Top Right Node -->
+    <circle cx="368" cy="148" r="8" fill="#38bdf8" filter="url(#glow-bright)"/>
+    <circle cx="368" cy="148" r="3.5" fill="#ffffff"/>
+
+    <!-- Bottom Left Node -->
+    <circle cx="144" cy="364" r="8" fill="#c084fc" filter="url(#glow-bright)"/>
+    <circle cx="144" cy="364" r="3.5" fill="#ffffff"/>
+
+    <!-- Bottom Right Node -->
+    <circle cx="368" cy="364" r="8" fill="#f43f5e" filter="url(#glow-bright)"/>
+    <circle cx="368" cy="364" r="3.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Central Intelligence Core Sparkle -->
+  <g transform="translate(256, 256)" filter="url(#glow-bright)">
+    <!-- 4-pointed Diamond Star -->
+    <path d="M 0 -28
+             Q 0 0 28 0
+             Q 0 0 0 28
+             Q 0 0 -28 0
+             Q 0 0 0 -28 Z"
+          fill="#ffffff"/>
+    <circle cx="0" cy="0" r="5" fill="#38bdf8"/>
+    <circle cx="0" cy="0" r="2" fill="#ffffff"/>
+  </g>
+</svg>

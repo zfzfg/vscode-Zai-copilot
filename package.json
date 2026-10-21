@@ -3,7 +3,20 @@
   "displayName": "Z.ai Language Model Provider",
   "description": "Visual Studio Code language model provider for Z.ai GLM models (standard and coding plan).",
   "version": "1.1.0",
-  "publisher": "zai-community",
+  "publisher": "zfzfg",
+  "author": {
+    "name": "Collin Lerche",
+    "url": "https://sterra.online"
+  },
+  "homepage": "https://sterra.online",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zfzfg/vscode-Zai-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zfzfg/vscode-Zai-copilot/issues"
+  },
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -18,10 +31,6 @@
     "language model provider",
     "chat"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/zai-community/vscode-zai-copilot"
-  },
   "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
@@ -155,6 +164,7 @@
     "package:vsix": "vsce package --no-dependencies"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^20.17.19",
     "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.24.1",

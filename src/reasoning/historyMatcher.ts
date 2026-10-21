@@ -89,8 +89,8 @@ export class HistoryMatcher {
       candidates.push(record);
     }
 
-    if (candidates.length === 0) {
-      return undefined;
+    if (candidates.length === 1) {
+      return candidates[0];
     }
 
     if (candidates.length > 1) {
@@ -99,6 +99,40 @@ export class HistoryMatcher {
       );
     }
 
-    return candidates[0];
+    // Fallback: If host compacted or reformatted earlier history during multi-step tool calls,
+    // match directly by unique expectedCallIds for the same model and endpoint profile.
+    if (params.expectedCallIds && params.expectedCallIds.length > 0) {
+      const callIdCandidates: ReplayRecord[] = [];
+      const expectedSet = new Set(params.expectedCallIds);
+
+      for (const record of store.getAll()) {
+        if (
+          record.status !== 'completed' ||
+          record.endpointProfile !== params.endpointProfile ||
+          record.modelId !== params.modelId
+        ) {
+          continue;
+        }
+
+        if (
+          record.callIds.length === params.expectedCallIds.length &&
+          record.callIds.every((id) => expectedSet.has(id))
+        ) {
+          callIdCandidates.push(record);
+        }
+      }
+
+      if (callIdCandidates.length === 1) {
+        return callIdCandidates[0];
+      }
+
+      if (callIdCandidates.length > 1) {
+        throw new ReplayMatchingError(
+          `Ambiguous reasoning replay candidates by callId: found ${callIdCandidates.length} matching records.`
+        );
+      }
+    }
+
+    return undefined;
   }
 }
