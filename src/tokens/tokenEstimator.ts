@@ -57,6 +57,10 @@ export class TokenEstimator {
       for (const part of textOrMessage.content) {
         if (part instanceof vscode.LanguageModelTextPart || (typeof part === 'object' && part !== null && 'value' in part && typeof (part as any).value === 'string' && !('callId' in part))) {
           tokens += this.estimateStringTokens((part as vscode.LanguageModelTextPart).value);
+        } else if (typeof part === 'string') {
+          tokens += this.estimateStringTokens(part);
+        } else if (typeof part === 'object' && part !== null && 'text' in part && typeof (part as any).text === 'string') {
+          tokens += this.estimateStringTokens((part as any).text);
         } else if (part instanceof vscode.LanguageModelToolCallPart || (typeof part === 'object' && part !== null && 'callId' in part && 'name' in part && 'input' in part)) {
           const tc = part as vscode.LanguageModelToolCallPart;
           tokens += this.TOOL_CALL_OVERHEAD_TOKENS;

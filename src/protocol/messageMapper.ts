@@ -41,7 +41,27 @@ export function mapHostMessages(
   for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
     const msg = messages[msgIdx];
 
-    if (msg.role === vscode.LanguageModelChatMessageRole.User) {
+    const isUserRole =
+      msg.role === vscode.LanguageModelChatMessageRole.User ||
+      (msg.role as any) === 1 ||
+      String(msg.role).toLowerCase() === 'user';
+
+    const isAssistantRole =
+      msg.role === vscode.LanguageModelChatMessageRole.Assistant ||
+      (msg.role as any) === 2 ||
+      String(msg.role).toLowerCase() === 'assistant';
+
+    const isSystemRole =
+      (msg.role as any) === 3 ||
+      String(msg.role).toLowerCase() === 'system' ||
+      ((vscode.LanguageModelChatMessageRole as any).System !== undefined &&
+        msg.role === (vscode.LanguageModelChatMessageRole as any).System);
+
+    const isToolRole =
+      (msg.role as any) === 4 ||
+      String(msg.role).toLowerCase() === 'tool';
+
+    if (isUserRole) {
       if (!msg.content || msg.content.length === 0) {
         throw new Error('Invalid message: User message content array cannot be empty.');
       }
@@ -68,6 +88,36 @@ export function mapHostMessages(
         if (part instanceof vscode.LanguageModelTextPart || (typeof part === 'object' && part !== null && 'value' in part && typeof (part as any).value === 'string' && !('callId' in part))) {
           const val = (part as vscode.LanguageModelTextPart).value;
           currentTextBuffer += val;
+        } else if (typeof part === 'string') {
+          currentTextBuffer += part;
+        } else if (
+          typeof part === 'object' &&
+          part !== null &&
+          'text' in part &&
+          typeof (part as any).text === 'string'
+        ) {
+          currentTextBuffer += (part as any).text;
+        } else if (
+          typeof part === 'object' &&
+          part !== null &&
+          'value' in part &&
+          typeof (part as any).value === 'object' &&
+          (part as any).value !== null &&
+          !('callId' in part)
+        ) {
+          const val = (part as any).value;
+          currentTextBuffer += typeof val.text === 'string' ? val.text : JSON.stringify(val);
+        } else if (
+          typeof part === 'object' &&
+          part !== null &&
+          'data' in part &&
+          (part as any).data instanceof Uint8Array
+        ) {
+          try {
+            currentTextBuffer += new TextDecoder().decode((part as any).data);
+          } catch {
+            // ignore binary decode error
+          }
         } else if (part instanceof vscode.LanguageModelToolResultPart || (typeof part === 'object' && part !== null && 'callId' in part && 'content' in part)) {
           // Flush any pending user text first
           flushText();
@@ -125,7 +175,7 @@ export function mapHostMessages(
 
       flushText();
 
-    } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
+    } else if (isAssistantRole) {
       if (!msg.content || msg.content.length === 0) {
         throw new Error('Invalid message: Assistant message content array cannot be empty.');
       }
@@ -137,6 +187,15 @@ export function mapHostMessages(
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart || (typeof part === 'object' && part !== null && 'value' in part && typeof (part as any).value === 'string' && !('callId' in part))) {
           textContent += (part as vscode.LanguageModelTextPart).value;
+        } else if (typeof part === 'string') {
+          textContent += part;
+        } else if (
+          typeof part === 'object' &&
+          part !== null &&
+          'text' in part &&
+          typeof (part as any).text === 'string'
+        ) {
+          textContent += (part as any).text;
         } else if (part instanceof vscode.LanguageModelToolCallPart || (typeof part === 'object' && part !== null && 'callId' in part && 'name' in part && 'input' in part)) {
           const tc = part as vscode.LanguageModelToolCallPart;
           const mappedName = nameMapper ? nameMapper.mapToZai(tc.name) : tc.name;
@@ -188,6 +247,128 @@ export function mapHostMessages(
       };
 
       result.push(assistantMsg);
+    } else if (isSystemRole) {
+      if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) {
+        continue;
+      }
+
+      let systemText = '';
+      if (typeof (msg as any).content === 'string') {
+        systemText = (msg as any).content;
+      } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (
+            part instanceof vscode.LanguageModelTextPart ||
+            (typeof part === 'object' && part !== null && 'value' in part && typeof (part as any).value === 'string' && !('callId' in part))
+          ) {
+            systemText += (part as vscode.LanguageModelTextPart).value;
+          } else if (typeof part === 'string') {
+            systemText += part;
+          } else if (
+            typeof part === 'object' &&
+            part !== null &&
+            'text' in part &&
+            typeof (part as any).text === 'string'
+          ) {
+            systemText += (part as any).text;
+          } else if (
+            typeof part === 'object' &&
+            part !== null &&
+            'value' in part &&
+            typeof (part as any).value === 'object' &&
+            (part as any).value !== null
+          ) {
+            const val = (part as any).value;
+            systemText += typeof val.text === 'string' ? val.text : JSON.stringify(val);
+          } else if (
+            typeof part === 'object' &&
+            part !== null &&
+            'data' in part &&
+            (part as any).data instanceof Uint8Array
+          ) {
+            try {
+              systemText += new TextDecoder().decode((part as any).data);
+            } catch {
+              // ignore binary decode error
+            }
+          } else {
+            throw new Error(
+              `UNSUPPORTED_MESSAGE_PART: Encountered unknown or unmappable content part in system message: ${JSON.stringify(part)}`
+            );
+          }
+        }
+      }
+
+      if (systemText.trim().length > 0) {
+        result.push({
+          role: 'system',
+          content: systemText,
+          name: msg.name,
+        });
+      }
+    } else if (isToolRole) {
+      if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) {
+        throw new Error('Invalid message: Tool message content cannot be empty.');
+      }
+      let toolText = '';
+      let callId = (msg as any).toolCallId ?? (msg as any).callId;
+
+      if (typeof (msg as any).content === 'string') {
+        toolText = (msg as any).content;
+      } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (
+            part instanceof vscode.LanguageModelToolResultPart ||
+            (typeof part === 'object' && part !== null && 'callId' in part)
+          ) {
+            callId = (part as any).callId || callId;
+            const content = (part as any).content;
+            if (Array.isArray(content)) {
+              for (const sub of content) {
+                if (
+                  sub instanceof vscode.LanguageModelTextPart ||
+                  (typeof sub === 'object' && sub !== null && 'value' in sub && typeof (sub as any).value === 'string')
+                ) {
+                  toolText += (sub as vscode.LanguageModelTextPart).value;
+                } else if (typeof sub === 'string') {
+                  toolText += sub;
+                } else {
+                  try {
+                    toolText += JSON.stringify(sub);
+                  } catch {
+                    toolText += String(sub);
+                  }
+                }
+              }
+            } else if (typeof content === 'string') {
+              toolText += content;
+            } else {
+              toolText += JSON.stringify(content ?? '');
+            }
+          } else if (typeof part === 'string') {
+            toolText += part;
+          } else if (
+            part instanceof vscode.LanguageModelTextPart ||
+            (typeof part === 'object' && part !== null && 'value' in part && typeof (part as any).value === 'string')
+          ) {
+            toolText += (part as vscode.LanguageModelTextPart).value;
+          } else {
+            throw new Error(
+              `UNSUPPORTED_MESSAGE_PART: Encountered unknown content part in tool message: ${JSON.stringify(part)}`
+            );
+          }
+        }
+      }
+
+      if (!callId) {
+        throw new Error('Tool message is missing tool_call_id.');
+      }
+
+      result.push({
+        role: 'tool',
+        content: toolText,
+        tool_call_id: callId,
+      });
     } else {
       throw new Error(`Unsupported message role in request: ${String(msg.role)}`);
     }

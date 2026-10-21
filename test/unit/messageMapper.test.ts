@@ -213,6 +213,76 @@ describe('Message & Tool Mapper', () => {
       expect(capturedCallIds).toEqual(['call_test']);
       expect(mapped[1].reasoning_content).toBe('restored-reasoning');
     });
+
+    it('maps system messages with role 3 or system correctly preceding user messages', () => {
+      const messages: vscode.LanguageModelChatRequestMessage[] = [
+        mockMsg(3 as any, [new vscode.LanguageModelTextPart('You are Copilot.')]),
+        mockMsg(vscode.LanguageModelChatMessageRole.User, [
+          new vscode.LanguageModelTextPart('Hello assistant!'),
+        ]),
+      ];
+
+      const mapped = mapHostMessages(messages);
+      expect(mapped).toHaveLength(2);
+      expect(mapped[0]).toEqual({
+        role: 'system',
+        content: 'You are Copilot.',
+        name: undefined,
+      });
+      expect(mapped[1]).toEqual({
+        role: 'user',
+        content: 'Hello assistant!',
+        name: undefined,
+      });
+    });
+
+    it('handles string parts and prompt-tsx parts in system and user messages', () => {
+      const messages: vscode.LanguageModelChatRequestMessage[] = [
+        mockMsg('system' as any, ['System prompt string', { value: { text: ' with prompt-tsx' } }]),
+        mockMsg(vscode.LanguageModelChatMessageRole.User, [
+          'Direct string prompt',
+          { text: ' additional text' },
+        ]),
+      ];
+
+      const mapped = mapHostMessages(messages);
+      expect(mapped).toHaveLength(2);
+      expect(mapped[0].role).toBe('system');
+      expect(mapped[0].content).toBe('System prompt string with prompt-tsx');
+      expect(mapped[1].role).toBe('user');
+      expect(mapped[1].content).toBe('Direct string prompt additional text');
+    });
+
+    it('skips empty system messages safely', () => {
+      const messages: vscode.LanguageModelChatRequestMessage[] = [
+        mockMsg(3 as any, []),
+        mockMsg(3 as any, [new vscode.LanguageModelTextPart('   ')]),
+        mockMsg(vscode.LanguageModelChatMessageRole.User, [new vscode.LanguageModelTextPart('Hi')]),
+      ];
+
+      const mapped = mapHostMessages(messages);
+      expect(mapped).toHaveLength(1);
+      expect(mapped[0].role).toBe('user');
+      expect(mapped[0].content).toBe('Hi');
+    });
+
+    it('maps tool messages with role 4 and callId', () => {
+      const messages: vscode.LanguageModelChatRequestMessage[] = [
+        mockMsg(vscode.LanguageModelChatMessageRole.User, [new vscode.LanguageModelTextPart('Run')]),
+        mockMsg(vscode.LanguageModelChatMessageRole.Assistant, [
+          new vscode.LanguageModelToolCallPart('call_abc', 'my_func', {}),
+        ]),
+        mockMsg(4 as any, [new vscode.LanguageModelToolResultPart('call_abc', ['Tool output'])], undefined),
+      ];
+
+      const mapped = mapHostMessages(messages);
+      expect(mapped).toHaveLength(3);
+      expect(mapped[2]).toEqual({
+        role: 'tool',
+        content: 'Tool output',
+        tool_call_id: 'call_abc',
+      });
+    });
   });
 
   describe('mapHostTools', () => {
