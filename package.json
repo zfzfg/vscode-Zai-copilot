@@ -1,0 +1,168 @@
+{
+  "name": "zai-copilot-provider",
+  "displayName": "Z.ai Language Model Provider",
+  "description": "Visual Studio Code language model provider for Z.ai GLM models (standard and coding plan).",
+  "version": "1.0.0",
+  "publisher": "zai-community",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "zai",
+    "glm",
+    "copilot",
+    "language model provider",
+    "chat"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zai-community/vscode-zai-copilot"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "zai",
+        "displayName": "Z.ai",
+        "managementCommand": "zai.manageProvider"
+      }
+    ],
+    "commands": [
+      {
+        "command": "zai.manageProvider",
+        "title": "Z.ai: Manage Provider Profile and API Keys",
+        "category": "Z.ai"
+      },
+      {
+        "command": "zai.testConnection",
+        "title": "Z.ai: Test Connection",
+        "category": "Z.ai"
+      },
+      {
+        "command": "zai.clearReasoningCache",
+        "title": "Z.ai: Clear Reasoning Cache",
+        "category": "Z.ai"
+      },
+      {
+        "command": "zai.showDiagnostics",
+        "title": "Z.ai: Show Diagnostics",
+        "category": "Z.ai"
+      }
+    ],
+    "configuration": {
+      "title": "Z.ai Copilot",
+      "properties": {
+        "zai.endpointProfile": {
+          "type": "string",
+          "enum": [
+            "unconfigured",
+            "standard",
+            "coding-plan"
+          ],
+          "enumDescriptions": [
+            "Unconfigured provider (models will not be listed until configured).",
+            "Standard API endpoint (https://api.z.ai/api/paas/v4).",
+            "Coding Plan endpoint (https://api.z.ai/api/coding/paas/v4)."
+          ],
+          "default": "unconfigured",
+          "description": "Selected Z.ai endpoint profile. Standard uses PaaS v4; Coding Plan uses the dedicated coding plan endpoint.",
+          "scope": "application"
+        },
+        "zai.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "low",
+            "high",
+            "max"
+          ],
+          "default": "high",
+          "description": "Reasoning effort level for GLM reasoning models (5.3 series).",
+          "scope": "application"
+        },
+        "zai.maxOutputTokens": {
+          "type": "integer",
+          "default": 16384,
+          "minimum": 1,
+          "maximum": 128000,
+          "description": "Maximum tokens requested for model output generation.",
+          "scope": "application"
+        },
+        "zai.preservedThinking": {
+          "type": "string",
+          "enum": [
+            "off",
+            "experimental-strict"
+          ],
+          "default": "off",
+          "description": "Policy for reusing thinking blocks across turns. Off uses clear_thinking: true; experimental-strict replays strictly matched reasoning.",
+          "scope": "application"
+        },
+        "zai.timeouts.firstEventMs": {
+          "type": "integer",
+          "default": 180000,
+          "minimum": 1000,
+          "description": "Timeout in milliseconds waiting for the first server-sent event chunk.",
+          "scope": "application"
+        },
+        "zai.timeouts.idleMs": {
+          "type": "integer",
+          "default": 120000,
+          "minimum": 1000,
+          "description": "Inactivity timeout in milliseconds between server-sent events.",
+          "scope": "application"
+        },
+        "zai.timeouts.totalMs": {
+          "type": "integer",
+          "default": 900000,
+          "minimum": 5000,
+          "description": "Total timeout deadline in milliseconds for a complete chat completion request.",
+          "scope": "application"
+        },
+        "zai.logLevel": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
+          "default": "warn",
+          "description": "Logging level for technical provider diagnostics. All logs strictly redact credentials, prompts, and code.",
+          "scope": "application"
+        },
+        "zai.experimentalModels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expose experimental or unverified model catalog entries (such as GLM-5.2).",
+          "scope": "application"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "build": "node esbuild.config.mjs",
+    "vscode:prepublish": "npm run check && npm run build",
+    "package:vsix": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.24.1",
+    "@typescript-eslint/parser": "^8.24.1",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.20.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
