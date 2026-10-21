@@ -100,7 +100,7 @@ export class HistoryMatcher {
     }
 
     // Fallback: If host compacted or reformatted earlier history during multi-step tool calls,
-    // match directly by unique expectedCallIds for the same model and endpoint profile.
+    // match directly by unique expectedCallIds for the same endpoint profile.
     if (params.expectedCallIds && params.expectedCallIds.length > 0) {
       const callIdCandidates: ReplayRecord[] = [];
       const expectedSet = new Set(params.expectedCallIds);
@@ -108,8 +108,7 @@ export class HistoryMatcher {
       for (const record of store.getAll()) {
         if (
           record.status !== 'completed' ||
-          record.endpointProfile !== params.endpointProfile ||
-          record.modelId !== params.modelId
+          record.endpointProfile !== params.endpointProfile
         ) {
           continue;
         }
@@ -122,14 +121,10 @@ export class HistoryMatcher {
         }
       }
 
-      if (callIdCandidates.length === 1) {
+      if (callIdCandidates.length > 0) {
+        // If multiple records matched the callIds, select the most recent one
+        callIdCandidates.sort((a, b) => b.timestamp - a.timestamp);
         return callIdCandidates[0];
-      }
-
-      if (callIdCandidates.length > 1) {
-        throw new ReplayMatchingError(
-          `Ambiguous reasoning replay candidates by callId: found ${callIdCandidates.length} matching records.`
-        );
       }
     }
 

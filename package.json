@@ -2,7 +2,7 @@
   "name": "zai-copilot-provider",
   "displayName": "Z.ai Language Model Provider",
   "description": "Visual Studio Code language model provider for Z.ai GLM models (standard and coding plan).",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "zfzfg",
   "author": {
     "name": "Collin Lerche",

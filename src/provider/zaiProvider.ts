@@ -25,7 +25,6 @@ import { TokenEstimator } from '../tokens/tokenEstimator.js';
 import {
   AuthenticationError,
   ModelNotFoundError,
-  ReplayMatchingError,
   UnconfiguredProviderError,
   ZaiError,
 } from '../transport/errors.js';
@@ -206,16 +205,21 @@ export class ZaiChatProvider
           return match.reasoningContent;
         }
 
-        // If this was a tool continuation turn on a thinking-enforced model (5.3 series),
-        // missing reasoning means the tool continuation cannot be safely reconstructed.
-        // PLANNING.md Section 10.2 & 13.1 requires aborting before sending the request.
-        if (isToolContinuationTurn && !descriptor.supportsThinkingDisable) {
-          throw new ReplayMatchingError(
-            `Cannot continue tool execution: reasoning history for tool call [${toolCallIds.join(', ')}] was not found in the local reasoning cache. This happens after editor restarts or if the 30-minute cache TTL expired. Please start a new conversation turn.`
+        // Graceful degradation: If reasoning history for this tool call is missing from cache
+        // (due to editor restart, TTL expiry, turn compaction, or prior transient error),
+        // proceed without failing the turn. We mark allHistoricalThinkingMatched = false,
+        // which tells the request builder to set clear_thinking: true so the model starts
+        // a fresh thinking block cleanly.
+        if (isToolContinuationTurn) {
+          this.logger.warn(
+            `Reasoning history for tool call [${toolCallIds.join(', ')}] was not found in local cache (TTL expired or turn compacted). Gracefully proceeding with fresh thinking.`,
+            {
+              model: descriptor.apiModelId,
+              toolCallIds: toolCallIds.join(', '),
+            }
           );
         }
 
-        // For plain text turns under experimental-strict, mark that not all turns were matched
         allHistoricalThinkingMatched = false;
         return undefined;
       },

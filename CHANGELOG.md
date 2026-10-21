@@ -2,6 +2,11 @@
 
 All notable changes to the "zai-copilot-provider" extension will be documented in this file.
 
+## [1.1.1] - 2026-10-21
+
+### Bug Fixes & Resilience
+- **Eliminate Tool Continuation Cache Failures**: Removed client-side `ReplayMatchingError` on missing reasoning history. When reasoning cache misses occur (due to multi-step tool compaction, editor restarts, TTL expiration, or retries), the provider now gracefully falls back and continues the request with `clear_thinking: true`. The model starts a fresh reasoning chain, completely resolving the recurrent *"Cannot continue tool execution: reasoning history for tool call was not found in the local reasoning cache"* crash.
+
 ## [1.1.0] - 2026-10-21
 
 ### Robustness & UX Improvements

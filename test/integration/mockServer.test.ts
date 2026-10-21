@@ -676,7 +676,8 @@ describe('HTTP Client & Provider Mock Integration', () => {
     );
   });
 
-  it('safely aborts with ReplayMatchingError before network call when tool continuation reasoning is missing from cache', async () => {
+  it('gracefully degrades and continues chat completion when tool continuation reasoning is missing from cache', async () => {
+    responseMode = 'standard_stream';
     const mockSecrets: any = {
       store: new Map<string, string>([['zai.apiKey.standard', 'valid-test-key']]),
       get: async (k: string) => mockSecrets.store.get(k),
@@ -712,31 +713,33 @@ describe('HTTP Client & Provider Mock Integration', () => {
       onCancellationRequested: () => ({ dispose: () => {} }),
     } as any;
 
-    await expect(
-      provider.provideLanguageModelChatResponse(
-        modelInfo,
-        [
-          {
-            role: vscode.LanguageModelChatMessageRole.User,
-            content: [new vscode.LanguageModelTextPart('Do task')],
-            name: undefined,
-          },
-          {
-            role: vscode.LanguageModelChatMessageRole.Assistant,
-            content: [new vscode.LanguageModelToolCallPart('call_x', 'do_task', {})],
-            name: undefined,
-          },
-          {
-            role: vscode.LanguageModelChatMessageRole.User,
-            content: [new vscode.LanguageModelToolResultPart('call_x', ['Done'])],
-            name: undefined,
-          },
-        ],
-        { toolMode: vscode.LanguageModelChatToolMode.Auto },
-        progress,
-        dummyToken
-      )
-    ).rejects.toThrow(/Cannot continue tool execution: reasoning history for tool call/);
+    await provider.provideLanguageModelChatResponse(
+      modelInfo,
+      [
+        {
+          role: vscode.LanguageModelChatMessageRole.User,
+          content: [new vscode.LanguageModelTextPart('Do task')],
+          name: undefined,
+        },
+        {
+          role: vscode.LanguageModelChatMessageRole.Assistant,
+          content: [new vscode.LanguageModelToolCallPart('call_x', 'do_task', {})],
+          name: undefined,
+        },
+        {
+          role: vscode.LanguageModelChatMessageRole.User,
+          content: [new vscode.LanguageModelToolResultPart('call_x', ['Done'])],
+          name: undefined,
+        },
+      ],
+      { toolMode: vscode.LanguageModelChatToolMode.Auto },
+      progress,
+      dummyToken
+    );
+
+    // Chat completion must proceed and succeed without aborting
+    expect(lastReceivedBody?.messages).toBeDefined();
+    expect(lastReceivedBody?.thinking?.clear_thinking).toBe(true);
   });
 
   it('rolls back replay cache entry if request is cancelled before/during tool publishing', async () => {
